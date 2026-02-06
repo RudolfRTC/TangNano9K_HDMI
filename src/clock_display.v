@@ -7,6 +7,8 @@ module clock_display (
     input  wire        rst,       // active high reset
     input  wire [10:0] hcnt,      // horizontal pixel counter
     input  wire [9:0]  vcnt,      // vertical line counter
+    input  wire        inc_hour,  // pulse: increment hours by 1
+    input  wire        inc_min,   // pulse: increment minutes by 1 (resets seconds)
     output wire        pixel_on   // 1 = clock digit pixel, 0 = background
 );
 
@@ -63,7 +65,37 @@ module clock_display (
             h_ones <= 4'd0; h_tens <= 4'd0;
             blink  <= 1'b1;
         end else begin
-            if (one_second) begin
+            // Default: advance sub-second counter
+            sec_cnt <= sec_cnt + 27'd1;
+
+            // Button presses have priority over normal tick
+            if (inc_min) begin
+                // Increment minutes, reset seconds to :00
+                sec_cnt <= 27'd0;
+                s_ones <= 4'd0;
+                s_tens <= 4'd0;
+                if (m_ones == 4'd9) begin
+                    m_ones <= 4'd0;
+                    if (m_tens == 4'd5)
+                        m_tens <= 4'd0;
+                    else
+                        m_tens <= m_tens + 4'd1;
+                end else begin
+                    m_ones <= m_ones + 4'd1;
+                end
+            end else if (inc_hour) begin
+                // Increment hours (23 -> 0)
+                if (h_tens == 4'd2 && h_ones == 4'd3) begin
+                    h_ones <= 4'd0;
+                    h_tens <= 4'd0;
+                end else if (h_ones == 4'd9) begin
+                    h_ones <= 4'd0;
+                    h_tens <= h_tens + 4'd1;
+                end else begin
+                    h_ones <= h_ones + 4'd1;
+                end
+            end else if (one_second) begin
+                // Normal tick: increment seconds
                 sec_cnt <= 27'd0;
                 blink <= ~blink;
                 if (s_ones == 4'd9) begin
@@ -95,8 +127,6 @@ module clock_display (
                 end else begin
                     s_ones <= s_ones + 4'd1;
                 end
-            end else begin
-                sec_cnt <= sec_cnt + 27'd1;
             end
         end
     end
