@@ -1,7 +1,8 @@
-// TangNano 9K HDMI 720p60 Color Bar Test Pattern
+// TangNano 9K HDMI 720p60 Digital Clock Display
 // Target: Gowin GW1NR-9C
 // Input clock: 27 MHz
 // Output: 1280x720 @ 60Hz via HDMI (DVI mode)
+// Displays HH:MM:SS clock with 7-segment style digits
 
 module top (
     input  wire       clk,          // 27 MHz system clock
@@ -67,23 +68,32 @@ module top (
     );
 
     // =========================================================================
-    // Color bar test pattern (8 vertical bars)
+    // Clock display
     // =========================================================================
 
+    wire clock_pixel_on;
+
+    clock_display clock_inst (
+        .clk(clk_pixel),
+        .rst(~rst_n),
+        .hcnt(hcnt),
+        .vcnt(vcnt),
+        .pixel_on(clock_pixel_on)
+    );
+
+    // RGB output: green digits on dark background
     reg [7:0] r, g, b;
 
     always @(posedge clk_pixel) begin
-        case (hcnt[10:7])  // divide 1280 pixels into 8 regions (each 160px)
-            4'd0: begin r <= 8'hFF; g <= 8'hFF; b <= 8'hFF; end  // White
-            4'd1: begin r <= 8'hFF; g <= 8'hFF; b <= 8'h00; end  // Yellow
-            4'd2: begin r <= 8'h00; g <= 8'hFF; b <= 8'hFF; end  // Cyan
-            4'd3: begin r <= 8'h00; g <= 8'hFF; b <= 8'h00; end  // Green
-            4'd4: begin r <= 8'hFF; g <= 8'h00; b <= 8'hFF; end  // Magenta
-            4'd5: begin r <= 8'hFF; g <= 8'h00; b <= 8'h00; end  // Red
-            4'd6: begin r <= 8'h00; g <= 8'h00; b <= 8'hFF; end  // Blue
-            4'd7: begin r <= 8'h00; g <= 8'h00; b <= 8'h00; end  // Black
-            default: begin r <= 8'h00; g <= 8'h00; b <= 8'h00; end
-        endcase
+        if (clock_pixel_on) begin
+            r <= 8'h00;  // bright green clock digits
+            g <= 8'hFF;
+            b <= 8'h00;
+        end else begin
+            r <= 8'h05;  // near-black background
+            g <= 8'h05;
+            b <= 8'h10;
+        end
     end
 
     // Delay sync/de by one clock to match pattern pipeline
