@@ -6,7 +6,8 @@
 
 module top (
     input  wire       clk,          // 27 MHz system clock
-    input  wire       sys_resetn,   // active-low reset button
+    input  wire       btn_hour_n,   // S1 button: increment hours (active-low)
+    input  wire       btn_min_n,    // S2 button: increment minutes (active-low)
     output wire       tmds_clk_p,
     output wire       tmds_clk_n,
     output wire [2:0] tmds_d_p,
@@ -50,6 +51,115 @@ module top (
     end
 
     // =========================================================================
+    // Button debounce, edge detection and auto-repeat
+    // =========================================================================
+
+    // --- Hour button (S1) ---
+    reg [19:0] deb_cnt_h;
+    reg        btn_h_stable;
+    reg        btn_h_prev;
+
+    always @(posedge clk_pixel) begin
+        if (!rst_n) begin
+            deb_cnt_h   <= 20'd0;
+            btn_h_stable <= 1'b1;
+        end else begin
+            if (btn_hour_n != btn_h_stable) begin
+                if (deb_cnt_h == 20'hFFFFF)     // ~14ms debounce
+                    btn_h_stable <= btn_hour_n;
+                else
+                    deb_cnt_h <= deb_cnt_h + 20'd1;
+            end else begin
+                deb_cnt_h <= 20'd0;
+            end
+        end
+    end
+
+    always @(posedge clk_pixel) btn_h_prev <= btn_h_stable;
+    wire btn_h_press = btn_h_prev & ~btn_h_stable;  // falling edge = press
+
+    // Auto-repeat: 700ms initial, then every 200ms
+    reg [25:0] rep_cnt_h;
+    reg        rep_active_h;
+    reg        rep_pulse_h;
+
+    always @(posedge clk_pixel) begin
+        rep_pulse_h <= 1'b0;
+        if (!rst_n || btn_h_stable) begin   // released
+            rep_cnt_h   <= 26'd0;
+            rep_active_h <= 1'b0;
+        end else begin                       // held down
+            rep_cnt_h <= rep_cnt_h + 26'd1;
+            if (!rep_active_h) begin
+                if (rep_cnt_h == 26'd51_975_000) begin  // ~700ms
+                    rep_active_h <= 1'b1;
+                    rep_cnt_h    <= 26'd0;
+                    rep_pulse_h  <= 1'b1;
+                end
+            end else begin
+                if (rep_cnt_h == 26'd14_850_000) begin  // ~200ms
+                    rep_cnt_h   <= 26'd0;
+                    rep_pulse_h <= 1'b1;
+                end
+            end
+        end
+    end
+
+    wire inc_hour = btn_h_press | rep_pulse_h;
+
+    // --- Minute button (S2) ---
+    reg [19:0] deb_cnt_m;
+    reg        btn_m_stable;
+    reg        btn_m_prev;
+
+    always @(posedge clk_pixel) begin
+        if (!rst_n) begin
+            deb_cnt_m    <= 20'd0;
+            btn_m_stable <= 1'b1;
+        end else begin
+            if (btn_min_n != btn_m_stable) begin
+                if (deb_cnt_m == 20'hFFFFF)
+                    btn_m_stable <= btn_min_n;
+                else
+                    deb_cnt_m <= deb_cnt_m + 20'd1;
+            end else begin
+                deb_cnt_m <= 20'd0;
+            end
+        end
+    end
+
+    always @(posedge clk_pixel) btn_m_prev <= btn_m_stable;
+    wire btn_m_press = btn_m_prev & ~btn_m_stable;
+
+    reg [25:0] rep_cnt_m;
+    reg        rep_active_m;
+    reg        rep_pulse_m;
+
+    always @(posedge clk_pixel) begin
+        rep_pulse_m <= 1'b0;
+        if (!rst_n || btn_m_stable) begin
+            rep_cnt_m    <= 26'd0;
+            rep_active_m <= 1'b0;
+        end else begin
+            rep_cnt_m <= rep_cnt_m + 26'd1;
+            if (!rep_active_m) begin
+                if (rep_cnt_m == 26'd51_975_000) begin
+                    rep_active_m <= 1'b1;
+                    rep_cnt_m    <= 26'd0;
+                    rep_pulse_m  <= 1'b1;
+                end
+            end else begin
+                if (rep_cnt_m == 26'd14_850_000) begin
+                    rep_cnt_m   <= 26'd0;
+                    rep_pulse_m <= 1'b1;
+                end
+            end
+        end
+    end
+
+    wire inc_min = btn_m_press | rep_pulse_m;
+
+    // =========================================================================
     // Video timing generator
     // =========================================================================
 
@@ -78,6 +188,8 @@ module top (
         .rst(~rst_n),
         .hcnt(hcnt),
         .vcnt(vcnt),
+        .inc_hour(inc_hour),
+        .inc_min(inc_min),
         .pixel_on(clock_pixel_on)
     );
 
